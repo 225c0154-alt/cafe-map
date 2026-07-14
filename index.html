@@ -16,10 +16,18 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Sego
 }
 .header h1 { font-size: 18px; font-weight: 600; color: #333; }
 .header span { font-size: 12px; color: #888; }
-.leaflet-popup-content { font-size: 14px; line-height: 1.6; min-width: 180px; }
+.leaflet-popup-content { font-size: 14px; line-height: 1.6; min-width: 200px; }
 .leaflet-popup-content h3 { font-size: 15px; margin-bottom: 4px; color: #222; }
 .leaflet-popup-content p { margin: 2px 0; color: #555; }
 .leaflet-popup-content .comment { color: #8b5e3c; font-style: italic; margin-top: 4px; }
+.leaflet-popup-content .detail { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.leaflet-popup-content .detail span {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  background: #f0f0f0; color: #555;
+}
+.leaflet-popup-content .detail .tag-yes { background: #d4edda; color: #155724; }
+.leaflet-popup-content .detail .tag-no { background: #f8d7da; color: #721c24; }
+.leaflet-popup-content .detail .tag-unknown { background: #e2e3e5; color: #383d41; }
 .popup-actions { display: flex; gap: 6px; margin-top: 8px; }
 .popup-actions button {
   flex: 1; padding: 5px 0; border: none; border-radius: 4px;
@@ -44,14 +52,14 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Sego
 .form-toggle .arrow { transition: transform .3s; font-size: 12px; }
 #form-panel.collapsed .arrow { transform: rotate(-90deg); }
 .form-body { padding: 0 16px 16px; }
-.form-body input, .form-body textarea {
+.form-body input, .form-body textarea, .form-body select {
   width: 100%; padding: 8px 10px; margin-bottom: 8px;
   border: 1px solid #ddd; border-radius: 6px; font-size: 13px;
-  outline: none; transition: border .2s;
+  outline: none; transition: border .2s; background: #fff;
 }
-.form-body input:focus, .form-body textarea:focus { border-color: #e74c3c; }
+.form-body input:focus, .form-body textarea:focus, .form-body select:focus { border-color: #e74c3c; }
 .form-row { display: flex; gap: 8px; }
-.form-row input { flex: 1; }
+.form-row input, .form-row select { flex: 1; }
 .form-body textarea { resize: vertical; min-height: 50px; }
 .form-body .btn {
   width: 100%; padding: 10px; border: none; border-radius: 6px;
@@ -79,6 +87,12 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Sego
 .form-body.editing .edit-badge { display: block; }
 .form-body.editing .btn { background: #3498db; }
 .form-body.editing .btn:hover { background: #2980b9; }
+#error-msg {
+  display: none; position: fixed; top: 56px; left: 50%; transform: translateX(-50%);
+  z-index: 2000; background: #f8d7da; color: #721c24; padding: 10px 20px;
+  border-radius: 8px; font-size: 13px; box-shadow: 0 2px 12px rgba(0,0,0,.15);
+  max-width: 90%; text-align: center;
+}
 @media (min-width: 768px) {
   #form-panel {
     top: 52px; bottom: 0; left: auto; right: 0; width: 300px;
@@ -95,6 +109,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Sego
   <h1>☕ 渋谷カフェマップ</h1>
   <span>周辺のカフェ5選</span>
 </div>
+<div id="error-msg"></div>
 <div id="map"></div>
 <div id="form-panel" class="collapsed">
   <div class="form-toggle" onclick="toggleForm()">
@@ -111,6 +126,12 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Sego
     </div>
     <p class="hint">※ 地図をクリックすると緯度・経度が自動入力されます</p>
     <button class="geocode-btn" onclick="fetchAddress()">📍 緯度経度から住所を自動取得</button>
+    <input type="text" id="cafe-hours" placeholder="営業時間（例: 9:00〜18:00）">
+    <div class="form-row">
+      <select id="cafe-wifi"><option value="">WiFi</option><option value="yes">あり</option><option value="no">なし</option><option value="unknown">不明</option></select>
+      <select id="cafe-power"><option value="">電源</option><option value="yes">あり</option><option value="no">なし</option><option value="unknown">不明</option></select>
+      <select id="cafe-parking"><option value="">駐車場</option><option value="yes">あり</option><option value="no">なし</option><option value="unknown">不明</option></select>
+    </div>
     <textarea id="cafe-comment" placeholder="一言コメント"></textarea>
     <button class="btn" id="submit-btn" onclick="registerCafe()">登録</button>
     <button class="btn-secondary" id="cancel-btn" style="display:none" onclick="cancelEdit()">キャンセル</button>
@@ -118,16 +139,19 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Sego
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
-const DEFAULT_CAFES = [
-  { name: "渋谷コーヒー", address: "東京都渋谷区道玄坂1-12-3", lat: 35.6585, lng: 139.6965, comment: "静かな空間で深煎りの一杯を" },
-  { name: "カフェ・ド・渋谷", address: "東京都渋谷区宇田川町15-1", lat: 35.6610, lng: 139.6985, comment: "窓際の席で街並みを眺めて" },
-  { name: "神宮前カフェ", address: "東京都渋谷区神宮前6-12-4", lat: 35.6645, lng: 139.7050, comment: "テラス席でゆったり朝時間" },
-  { name: "代官山ブックス＆カフェ", address: "東京都渋谷区代官山町17-6", lat: 35.6495, lng: 139.7035, comment: "本とコーヒーの至福時間" },
-  { name: "裏原宿ラテ", address: "東京都渋谷区神宮前4-26-5", lat: 35.6700, lng: 139.7100, comment: "アートな空間でスペシャルティラテ" }
-];
-const STORAGE_KEY = 'cafeMap_cafes';
+const SUPABASE_URL = 'https://wvvpafovlixjfoipnekm.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_NKTSGY8Egdu4xGrfmhH2Kw_gTJC3jPT';
+const SUPABASE_TABLE = 'cafes';
 
-let cafes = loadCafes();
+const DEFAULT_CAFES = [
+  { name: "渋谷コーヒー", address: "東京都渋谷区道玄坂1-12-3", lat: 35.6585, lng: 139.6965, comment: "静かな空間で深煎りの一杯を", hours: "7:00〜19:00", wifi: "yes", power: "yes", parking: "no" },
+  { name: "カフェ・ド・渋谷", address: "東京都渋谷区宇田川町15-1", lat: 35.6610, lng: 139.6985, comment: "窓際の席で街並みを眺めて", hours: "8:00〜22:00", wifi: "yes", power: "unknown", parking: "no" },
+  { name: "神宮前カフェ", address: "東京都渋谷区神宮前6-12-4", lat: 35.6645, lng: 139.7050, comment: "テラス席でゆったり朝時間", hours: "9:00〜18:00", wifi: "yes", power: "no", parking: "unknown" },
+  { name: "代官山ブックス＆カフェ", address: "東京都渋谷区代官山町17-6", lat: 35.6495, lng: 139.7035, comment: "本とコーヒーの至福時間", hours: "10:00〜20:00", wifi: "yes", power: "yes", parking: "yes" },
+  { name: "裏原宿ラテ", address: "東京都渋谷区神宮前4-26-5", lat: 35.6700, lng: 139.7100, comment: "アートな空間でスペシャルティラテ", hours: "8:00〜21:00", wifi: "unknown", power: "unknown", parking: "no" }
+];
+
+let cafes = [];
 let markers = [];
 let editingIndex = -1;
 
@@ -146,16 +170,83 @@ const icon = L.divIcon({
   popupAnchor: [0, -18]
 });
 
-function loadCafes() {
-  const data = localStorage.getItem(STORAGE_KEY);
-  if (data) {
-    try { return JSON.parse(data); } catch (e) { /* fall through */ }
-  }
-  return JSON.parse(JSON.stringify(DEFAULT_CAFES));
+// --- Supabase REST helpers ---
+
+function supabaseHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_KEY,
+    'Authorization': `Bearer ${SUPABASE_KEY}`
+  };
 }
 
-function saveCafes() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cafes));
+function showError(msg) {
+  const el = document.getElementById('error-msg');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+async function apiFetch(path, options) {
+  const res = await fetch(`${SUPABASE_URL}${path}`, { ...options, headers: { ...supabaseHeaders(), ...options?.headers } });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Supabase ${res.status}: ${body.slice(0, 200)}`);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+function supabaseUrl(table) {
+  return `/rest/v1/${table}`;
+}
+
+function supabaseSelect() {
+  return apiFetch(`${supabaseUrl(SUPABASE_TABLE)}?select=*&order=id.asc`);
+}
+
+function supabaseInsert(rows) {
+  return apiFetch(`${supabaseUrl(SUPABASE_TABLE)}?select=*`, {
+    method: 'POST', body: JSON.stringify(rows)
+  });
+}
+
+function supabaseUpdate(id, data) {
+  return apiFetch(`${supabaseUrl(SUPABASE_TABLE)}?id=eq.${id}`, {
+    method: 'PATCH', body: JSON.stringify(data)
+  });
+}
+
+function supabaseDelete(id) {
+  return apiFetch(`${supabaseUrl(SUPABASE_TABLE)}?id=eq.${id}`, { method: 'DELETE' });
+}
+
+// --- Core ---
+
+function label(val) {
+  if (val === 'yes') return 'あり';
+  if (val === 'no') return 'なし';
+  return '不明';
+}
+
+function tagClass(val) {
+  if (val === 'yes') return 'tag-yes';
+  if (val === 'no') return 'tag-no';
+  return 'tag-unknown';
+}
+
+async function loadCafes() {
+  try {
+    let data = await supabaseSelect();
+    if (!data || data.length === 0) {
+      data = await supabaseInsert(DEFAULT_CAFES);
+    }
+    cafes = data || [];
+  } catch (e) {
+    console.error(e);
+    showError('Supabase との通信に失敗しました。ファイルを HTTP サーバーで開いてください。');
+    cafes = [];
+  }
+  renderMarkers();
 }
 
 function renderMarkers() {
@@ -167,6 +258,12 @@ function renderMarkers() {
       <h3>${cafe.name}</h3>
       <p>${cafe.address || '住所未設定'}</p>
       <p class="comment">${cafe.comment}</p>
+      ${cafe.hours ? `<p>⏰ ${cafe.hours}</p>` : ''}
+      <div class="detail">
+        <span class="${tagClass(cafe.wifi)}">WiFi ${label(cafe.wifi)}</span>
+        <span class="${tagClass(cafe.power)}">電源 ${label(cafe.power)}</span>
+        <span class="${tagClass(cafe.parking)}">駐車場 ${label(cafe.parking)}</span>
+      </div>
       <div class="popup-actions">
         <button class="edit-btn" onclick="editCafe(${i})">編集</button>
         <button class="delete-btn" onclick="deleteCafe(${i})">削除</button>
@@ -203,28 +300,46 @@ function fetchAddress() {
     .catch(() => {});
 }
 
-function registerCafe() {
-  const name = document.getElementById('cafe-name').value.trim();
-  const address = document.getElementById('cafe-address').value.trim();
-  const lat = parseFloat(document.getElementById('cafe-lat').value);
-  const lng = parseFloat(document.getElementById('cafe-lng').value);
-  const comment = document.getElementById('cafe-comment').value.trim();
+function selectVal(id) {
+  return document.getElementById(id).value || null;
+}
+
+function getFormData() {
+  return {
+    name: document.getElementById('cafe-name').value.trim(),
+    address: document.getElementById('cafe-address').value.trim(),
+    lat: parseFloat(document.getElementById('cafe-lat').value),
+    lng: parseFloat(document.getElementById('cafe-lng').value),
+    hours: document.getElementById('cafe-hours').value.trim(),
+    wifi: selectVal('cafe-wifi'),
+    power: selectVal('cafe-power'),
+    parking: selectVal('cafe-parking'),
+    comment: document.getElementById('cafe-comment').value.trim()
+  };
+}
+
+async function registerCafe() {
+  const { name, address, lat, lng, hours, wifi, power, parking, comment } = getFormData();
 
   if (!name || isNaN(lat) || isNaN(lng) || !comment) {
     alert('カフェ名・緯度・経度・コメントは必須です。');
     return;
   }
 
-  if (editingIndex >= 0) {
-    cafes[editingIndex] = { name, address, lat, lng, comment };
-    editingIndex = -1;
-  } else {
-    cafes.push({ name, address, lat, lng, comment });
+  try {
+    if (editingIndex >= 0) {
+      const cafe = cafes[editingIndex];
+      await supabaseUpdate(cafe.id, { name, address, lat, lng, hours, wifi, power, parking, comment });
+      editingIndex = -1;
+    } else {
+      await supabaseInsert([{ name, address, lat, lng, hours, wifi, power, parking, comment }]);
+    }
+    await loadCafes();
+    resetForm();
+  } catch (e) {
+    console.error(e);
+    showError('保存に失敗しました。');
   }
-
-  saveCafes();
-  renderMarkers();
-  resetForm();
 }
 
 function editCafe(index) {
@@ -234,18 +349,26 @@ function editCafe(index) {
   document.getElementById('cafe-address').value = cafe.address || '';
   document.getElementById('cafe-lat').value = cafe.lat;
   document.getElementById('cafe-lng').value = cafe.lng;
+  document.getElementById('cafe-hours').value = cafe.hours || '';
+  document.getElementById('cafe-wifi').value = cafe.wifi || '';
+  document.getElementById('cafe-power').value = cafe.power || '';
+  document.getElementById('cafe-parking').value = cafe.parking || '';
   document.getElementById('cafe-comment').value = cafe.comment;
   document.getElementById('submit-btn').textContent = '更新';
   document.getElementById('cancel-btn').style.display = 'block';
   document.getElementById('form-panel').classList.remove('collapsed');
 }
 
-function deleteCafe(index) {
+async function deleteCafe(index) {
   if (!confirm(`「${cafes[index].name}」を削除してもよろしいですか？`)) return;
-  cafes.splice(index, 1);
-  saveCafes();
-  renderMarkers();
-  if (editingIndex === index) cancelEdit();
+  try {
+    await supabaseDelete(cafes[index].id);
+    if (editingIndex === index) editingIndex = -1;
+    await loadCafes();
+  } catch (e) {
+    console.error(e);
+    showError('削除に失敗しました。');
+  }
 }
 
 function cancelEdit() {
@@ -258,12 +381,16 @@ function resetForm() {
   document.getElementById('cafe-address').value = '';
   document.getElementById('cafe-lat').value = '';
   document.getElementById('cafe-lng').value = '';
+  document.getElementById('cafe-hours').value = '';
+  document.getElementById('cafe-wifi').value = '';
+  document.getElementById('cafe-power').value = '';
+  document.getElementById('cafe-parking').value = '';
   document.getElementById('cafe-comment').value = '';
   document.getElementById('submit-btn').textContent = '登録';
   document.getElementById('cancel-btn').style.display = 'none';
 }
 
-renderMarkers();
+loadCafes();
 </script>
 </body>
 </html>
